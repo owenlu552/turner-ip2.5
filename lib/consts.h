@@ -1,7 +1,9 @@
 #ifndef __CONSTS_H
 #define __CONSTS_H
 
+#ifndef ADC_MAX
 #define ADC_MAX             1023
+#endif
 #define M_PI                3.14159265
 
 //Limits for numerical values of different types
@@ -12,6 +14,10 @@
 
 //Status field identifiers (currently unused)
 #define STATUS_UNUSED       0
+
+//Error codes
+#define ERR_NONE 0
+#define ERR_SPI_TIMEOUT 0x01   // SPI timeout
 
 //Command identifiers
 #define RADIO_TEST          0
@@ -51,5 +57,5 @@
 
 //Motor PWM configuration parameters
 //#define PTPER_VALUE             4999 // = FCY / (F_pwm * time_base_input_prescaler) - 1 eg. 2kHz pwm = 40e6 / ((((PTPER_VALUE = 4999) + 1)) * 4X prescaler)
-#define PTPER_VALUE             624// = FCY / (F_pwm * time_base_input_prescaler) - 1 eg. 2kHz pwm = 40e6 / ((((PTPER_VALUE = 4999) + 1)) * 4X prescaler)
+//#define PTPER_VALUE             624// = FCY / (F_pwm * time_base_input_prescaler) - 1 eg. 2kHz pwm = 40e6 / ((((PTPER_VALUE = 4999) + 1)) * 4X prescaler)
 #endif

@@ -31,15 +31,21 @@
 #include "tih.h"
 #include "blink.h"
 #include <stdlib.h>
+#include "cmd.h"
+#include "pid-ip2.5.h"
+#include "steering.h"
+#include "consts.h"
+#include "adc_pid.h"
 
 Payload rx_payload;
 MacPacket rx_packet;
 Test* test;
-
+unsigned int error_code;
 
 int main() {
     fun_queue = queueInit(FUN_Q_LEN);
     test_function tf;
+    error_code = ERR_NONE;
 
     /* Initialization */
     SetupClock();
@@ -47,16 +53,17 @@ int main() {
     SetupPorts();
 
     SetupInterrupts();
-    //SetupI2C();
-    //SetupADC();
-    SetupTimer1();
-    //SetupPWM();
+ //   SetupADC(); old A/D
+    adcSetup();   // DMA A/D
+//    SetupTimer1(); setup in pidSetup
     SetupTimer2();
     sclockSetup();
     mpuSetup();
-    amsHallSetup();
-    dfmemSetup();
+    //amsHallSetup(); //DEBUG
+    dfmemSetup(); 
     tiHSetup();   // set up H bridge drivers
+	cmdSetup();  // setup command table
+	pidSetup();  // setup PID control
 
     // Radio setup
     radioInit(RADIO_RXPQ_MAX_SIZE, RADIO_TXPQ_MAX_SIZE);
@@ -64,8 +71,9 @@ int main() {
     radioSetSrcAddr(RADIO_SRC_ADDR);
     radioSetSrcPanID(RADIO_PAN_ID);
     setupTimer6(RADIO_FCY); // Radio and buffer loop timer
-
-	blink_leds(4,500); // blink LEDs 4 times at half sec
+/**** set up steering last - so dfmem can finish ****/
+	steeringSetup(); // steering and Timer5 Int 
+	blink_leds(4,50); // blink LEDs 4 times at half sec
     char j;
     for(j=0; j<3; j++){
         LED_2 = ON;
@@ -83,7 +91,7 @@ int main() {
             test = queuePop(fun_queue);
             rx_payload = macGetPayload(test->packet);
             tf = test->tf;
-            (*tf)(payGetType(rx_payload), 
+            (*tf)(payGetType(rx_payload),   // old commands don't use packet type
                     payGetStatus(rx_payload), 
 			  payGetDataLength(rx_payload), 
                     payGetData(rx_payload));

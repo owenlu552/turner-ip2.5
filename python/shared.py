@@ -1,4 +1,4 @@
-BS_COMPORT = 'COM4'
+BS_COMPORT = 'COM5'
 BS_BAUDRATE = 230400
 
 motor_gains_set = False
