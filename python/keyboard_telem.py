@@ -1,6 +1,5 @@
 # Keyboard control with hall effect sensing and telemetry
-# updated for IP2.5 and AMS Hall angle sensor Jan. 2013
-# treat encoder angle as 16 bits 0 ... 2pi (really 14 bits)
+# last revision 2/16/2012 by RSF
 import msvcrt, sys
 import numpy as np
 from lib import command
@@ -13,31 +12,36 @@ import shared
 
 DEST_ADDR = '\x20\x52'
 imudata_file_name = 'imudata.txt'
+statedata_file_name = 'statedata.txt'
+dutycycle_file_name = 'dutycycle.txt'
+motordata_file_name = 'motordata.txt'
 telemetry = False
 imudata = []
+statedata = []
+dutycycles = []
+motordata = []
 gainsNotSet = True;
-delay = 0.3 #0.025
+delay = 0.025
 
 ###### Operation Flags ####
 RESET_ROBOT = False
 ##########################
 
-
+# motorgains = [200,2,0,2,0,    200,2,0,2,0]
 # [Kp Ki Kd Kanti-wind ff]
 # now uses back emf velocity as d term
-#motorgains = [300,0,10,0,50, 300,0,10,0,50]
-# try just left motor
-motorgains = [400,0,400,0,0, 400,0,400,0,0]
+motorgains = [300,0,300,0,50, 300,0,300,0,50]
 throttle = [0,0]
-duration = 512  # length of run
-cycle = 512 # ms for a leg cycle
+duration = 1000  # length of run
+cycle = 250 # ms for a leg cycle
 # velocity profile
 # [time intervals for setpoints]
 # [position increments at set points]
-# [velocity increments]   
-delta = [0x4000,0x4000,0x4000,0x4000]  # adds up to 65536 (2 pi)
-intervals = [128, 128, 128, 128]  # total 512 ms
-vel = [128, 128,128,128]  # = delta/interval
+# [velocity increments]   muliplied by 256
+delta = [10,10,10,12]  # adds up to 42 counts- should be 42.6
+intervals = [50, 50, 50, 100]  # total 250 ms
+#intervals = [40,40,10,10] # total 100 ms
+vel = [51,51,51,30]  # = 256*delta/interval
 
 
 ser = serial.Serial(shared.BS_COMPORT, shared.BS_BAUDRATE,timeout=3, rtscts=0)
@@ -50,25 +54,17 @@ def xb_send(status, type, data):
 def resetRobot():
     xb_send(0, command.SOFTWARE_RESET, pack('h',0))
 
-def setThrust():
-    global duration, count, delay, throttle
-    thrust = [throttle[0], throttle[1], duration]
-    xb_send(0, command.SET_THRUST, pack("3h",*thrust))
-    print "cmdSetThrust " + str(thrust)
-
 def menu():
     print "-------------------------------------"
     print "e: radio echo test    | g: right motor gains | h: Help menu"
-    print "f: flash readback     | l: left motor gains"
+    print "l: left motor gains"
     print "m: toggle memory mode | n: get robot name    | p: proceed"
     print "q: quit               | r: reset robot       | s: set throttle"
     print "t: time of move length| v: set velocity profile"
-    print "x: PWM test thrust    | z: zero motor counts"
+    print "z: zero motor counts"
  
     
 #get velocity profile
-# velocity should be in Hall Diff per ms clock tick
-# 
 def getVelProfile():
     global cycle, intervals, vel
     sum = 0
@@ -76,12 +72,12 @@ def getVelProfile():
     x = raw_input()
     if len(x):
         temp = map(int,x.split(','))
-        delta[0] = (temp[0]*65536)/360
+        delta[0] = (temp[0]*42)/360
         sum = delta[0]
         for i in range(1,3):
-            delta[i] = ((temp[i]-temp[i-1])*65536)/360
+            delta[i] = ((temp[i]-temp[i-1])*42)/360
             sum = sum + delta[i]
-        delta[3]=65536-sum
+        delta[3]=42-sum
     else:
         print 'not enough delta values'
     print 'current cycle (ms)',cycle,' new value:',
@@ -94,12 +90,12 @@ def getVelProfile():
         for i in range(0,4):
             intervals[i] = cycle*intervals[i]/100  # interval in ms
             sum = sum + intervals[i]
-            vel[i] = (delta[i])/intervals[i]
+            vel[i] = (delta[i] <<8)/intervals[i]
         #adjust to total duration for rounding
         intervals[3] = intervals[3] + cycle - sum
     else:
         print 'not enough values'
-    print 'intervals (ms)',intervals
+ #  print 'intervals (ms)',intervals
  
         
 
@@ -109,7 +105,7 @@ def setVelProfile():
     print "Sending velocity profile"
     print "set points [encoder values]", delta
     print "intervals (ms)",intervals
-    print "velocities (delta per ms)",vel
+    print "velocities (<<8)",vel
     temp = intervals+delta+vel
     temp = temp+temp  # left = right
     xb_send(0, command.SET_VEL_PROFILE, pack('24h',*temp))
@@ -161,7 +157,7 @@ def getGain(lr):
             print 'not enough gain values'
             
 # execute move command
-count = 300 # 300 Hz sampling in steering = 1 sec
+count = 300
 
 def proceed():
     global duration, count, delay, throttle
@@ -174,7 +170,6 @@ def proceed():
         skip = 0    # store every other sample if = 1
         temp=[count,start,skip]
         print 'temp =',temp,'\n'
-        raw_input("Press any key to send StartTelem...")
         xb_send(0, command.START_TELEM, pack('3h',*temp))
         time.sleep(0.1)
     xb_send(0, command.SET_THRUST_CLOSED_LOOP, pack('5h',*thrust))
@@ -190,23 +185,19 @@ def flashReadback():
     shared.imudata = []  # reset imudata structure
     shared.pkts = 0  # reset packet count???
     xb_send(0, command.FLASH_READBACK, pack('=h',count))
-    time.sleep(delay*count + 7)
-    #while shared.pkts != count:
-		#print "\n Retry after 10 seconds. Got only %d packets" %shared.pkts
-		#time.sleep(10)
-		#shared.imudata = []
-		#shared.pkts = 0
-		#xb_send(0, command.FLASH_READBACK, pack('=h',count))
-		#time.sleep(delay*count + 7)
-    if shared.pkts > count:
-        print "too many packets"
-        #break
-    if shared.pkts < count:
-        print "\n too few packets",str(shared.pkts)
-        #break
-    print "readback done"
-# While waiting, write parameters to start of file
+    # While waiting, write parameters to start of file
     writeFileHeader(dataFileName)     
+    time.sleep(delay*count + 3)
+    while shared.pkts != count:
+        print "Retry"
+        shared.imudata = []
+        shared.pkts = 0
+        xb_send(0, command.FLASH_READBACK, pack('=h',count))
+        time.sleep(delay*count + 3)
+        if shared.pkts > count:
+            print "too many packets"
+            break
+    print "readback done"
     fileout = open(dataFileName, 'a')
     np.savetxt(fileout , np.array(shared.imudata), '%d', delimiter = ',')
     fileout.close()
@@ -227,14 +218,13 @@ def writeFileHeader(dataFileName):
     fileout.write('"%  intervals     = ' +repr(intervals) + '"\n')
     fileout.write('"% Columns: "\n')
     # order for wiring on RF Turner
-    fileout.write('"% time | LPos| RPos | LPWM | RPWM | GyroX | GryoY | GryoZ | GryoZAvg | AX | AY | AZ | RBEMF | LBEMF | VBAT "\n')
+    fileout.write('"% time | Rlegs | Llegs | DCR | DCL | GyroX | GryoY | GryoZ | GryoZAvg | AX | AY | AZ | RBEMF | LBEMF "\n')
  #   fileout.write('"% time | Rlegs | Llegs | DCL | DCR | GyroX | GryoY | GryoZ | GryoZAvg | AX | AY | AZ | LBEMF | RBEMF | SteerOut"\n')
   #  fileout.write('time, Rlegs, Llegs, DCL, DCR, GyroX, GryoY, GryoZ, GryoZAvg, AX, AY, AZ, LBEMF, RBEMF, SteerOut\n')
     fileout.close()
     
 def main():
-    print 'keyboard_telem for IP2.5c Jan. 2013\n'
-    print delay
+    print 'keyboard_telem Feb. 16, 2012\n'
     global throttle, duration, telemetry, dataFileName
     dataFileName = 'Data/imudata.txt'
     count = 0       # keep track of packet tries
@@ -247,11 +237,10 @@ def main():
     if ser.isOpen():
         print "Serial open. Using port",shared.BS_COMPORT
   
-   
+    setGain()
     xb_send(0, command.WHO_AM_I, "Robot Echo")
-    #setGain()
     time.sleep(0.5)  # wait for whoami before sending next command
-    #setVelProfile()
+    setVelProfile()
     throttle = [0,0]
     tinc = 25;
     # time in milliseconds
@@ -274,8 +263,6 @@ def main():
         elif keypress == 'e':
             xb_send(0, command.ECHO,  "Echo Test")
             throttle[0] += tinc
-        elif keypress == 'f':
-            flashReadback()
         elif keypress == 'g':
             getGain('R')
             setGain()
@@ -310,7 +297,7 @@ def main():
             throttle[1] += tinc
             print "Throttle = ",throttle
         elif keypress == 'x':
-            setThrust()
+            throttle[1] = 0
         elif keypress == 'z':
             xb_send(0, command.ZERO_POS,  "Zero motor")
             print 'read motorpos and zero'

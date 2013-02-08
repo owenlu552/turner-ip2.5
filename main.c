@@ -59,7 +59,7 @@ int main() {
     SetupTimer2();
     sclockSetup();
     mpuSetup();
-    amsHallSetup();
+    //amsHallSetup(); //DEBUG
     dfmemSetup(); 
     tiHSetup();   // set up H bridge drivers
 	cmdSetup();  // setup command table
@@ -73,7 +73,7 @@ int main() {
     setupTimer6(RADIO_FCY); // Radio and buffer loop timer
 /**** set up steering last - so dfmem can finish ****/
 	steeringSetup(); // steering and Timer5 Int 
-	blink_leds(4,500); // blink LEDs 4 times at half sec
+	blink_leds(4,50); // blink LEDs 4 times at half sec
     char j;
     for(j=0; j<3; j++){
         LED_2 = ON;
